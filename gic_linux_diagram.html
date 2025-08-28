@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Linux GIC Architecture and API Flow</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+            backdrop-filter: blur(10px);
+        }
+        
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            background: linear-gradient(45deg, #3498db, #8e44ad);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .diagram-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 40px;
+            margin: 40px 0;
+        }
+        
+        .layer {
+            width: 100%;
+            max-width: 1200px;
+            padding: 25px;
+            border-radius: 15px;
+            position: relative;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+        }
+        
+        .layer:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.2);
+        }
+        
+        .hardware-layer {
+            background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+            color: white;
+        }
+        
+        .gic-layer {
+            background: linear-gradient(135deg, #4834d4, #686de0);
+            color: white;
+        }
+        
+        .kernel-layer {
+            background: linear-gradient(135deg, #00d2d3, #01a3a4);
+            color: white;
+        }
+        
+        .driver-layer {
+            background: linear-gradient(135deg, #feca57, #ff9ff3);
+            color: #333;
+        }
+        
+        .layer h2 {
+            margin-top: 0;
+            font-size: 1.8em;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        
+        .components {
+            display: flex;
+            justify-content: space-around;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        
+        .component {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            min-width: 150px;
+            backdrop-filter: blur(5px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            transition: all 0.3s ease;
+        }
+        
+        .component:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.05);
+        }
+        
+        .flow-arrow {
+            font-size: 2em;
+            color: #3498db;
+            text-align: center;
+            animation: bounce 2s infinite;
+        }
+        
+        @keyframes bounce {
+            0%, 20%, 50%, 80%, 100% {
+                transform: translateY(0);
+            }
+            40% {
+                transform: translateY(-10px);
+            }
+            60% {
+                transform: translateY(-5px);
+            }
+        }
+        
+        .api-section {
+            background: linear-gradient(135deg, #a8edea, #fed6e3);
+            padding: 30px;
+            border-radius: 15px;
+            margin: 30px 0;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+        }
+        
+        .api-section h3 {
+            color: #2c3e50;
+            font-size: 1.5em;
+            margin-bottom: 15px;
+        }
+        
+        .api-function {
+            background: white;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 8px;
+            border-left: 4px solid #3498db;
+            font-family: 'Courier New', monospace;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        
+        .sequence-flow {
+            background: linear-gradient(135deg, #ff9a9e, #fecfef);
+            padding: 30px;
+            border-radius: 15px;
+            margin: 30px 0;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+        }
+        
+        .sequence-step {
+            display: flex;
+            align-items: center;
+            margin: 15px 0;
+            padding: 15px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+        }
+        
+        .sequence-step:hover {
+            transform: translateX(10px);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+        
+        .step-number {
+            background: #3498db;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 15px;
+            font-weight: bold;
+        }
+        
+        .tabs {
+            display: flex;
+            background: #34495e;
+            border-radius: 10px 10px 0 0;
+            overflow: hidden;
+        }
+        
+        .tab {
+            padding: 15px 25px;
+            background: #34495e;
+            color: white;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: none;
+            font-size: 1.1em;
+        }
+        
+        .tab.active {
+            background: #3498db;
+        }
+        
+        .tab:hover:not(.active) {
+            background: #2c3e50;
+        }
+        
+        .tab-content {
+            display: none;
+            padding: 25px;
+            background: white;
+            border-radius: 0 0 10px 10px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .code-block {
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 20px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            overflow-x: auto;
+            margin: 15px 0;
+            border-left: 4px solid #3498db;
+        }
+        
+        .highlight {
+            color: #f39c12;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Linux Generic Interrupt Controller (GIC) Architecture</h1>
+        
+        <div class="diagram-container">
+            <!-- Hardware Layer -->
+            <div class="layer hardware-layer">
+                <h2>🔧 Hardware Layer</h2>
+                <div class="components">
+                    <div class="component">
+                        <strong>CPU Cores</strong><br>
+                        ARM Cortex-A cores with interrupt inputs
+                    </div>
+                    <div class="component">
+                        <strong>GIC Hardware</strong><br>
+                        Distributor + CPU Interface
+                    </div>
+                    <div class="component">
+                        <strong>Peripheral Devices</strong><br>
+                        UART, GPIO, Timers, etc.
+                    </div>
+                </div>
+            </div>
+            
+            <div class="flow-arrow">⬇️</div>
+            
+            <!-- GIC Driver Layer -->
+            <div class="layer gic-layer">
+                <h2>⚙️ GIC Driver Layer</h2>
+                <div class="components">
+                    <div class="component">
+                        <strong>GIC-v2/v3/v4 Drivers</strong><br>
+                        Hardware-specific implementations
+                    </div>
+                    <div class="component">
+                        <strong>IRQ Domain</strong><br>
+                        Hardware IRQ → Linux IRQ mapping
+                    </div>
+                    <div class="component">
+                        <strong>IPI Support</strong><br>
+                        Inter-Processor Interrupts
+                    </div>
+                </div>
+            </div>
+            
+            <div class="flow-arrow">⬇️</div>
+            
+            <!-- Generic IRQ Layer -->
+            <div class="layer kernel-layer">
+                <h2>🐧 Generic IRQ Subsystem</h2>
+                <div class="components">
+                    <div class="component">
+                        <strong>IRQ Chip Framework</strong><br>
+                        Generic interrupt operations
+                    </div>
+                    <div class="component">
+                        <strong>IRQ Descriptors</strong><br>
+                        Per-IRQ management structures
+                    </div>
+                    <div class="component">
+                        <strong>IRQ Flow Handlers</strong><br>
+                        Level, Edge, Threaded handlers
+                    </div>
+                </div>
+            </div>
+            
+            <div class="flow-arrow">⬇️</div>
+            
+            <!-- Device Driver Layer -->
+            <div class="layer driver-layer">
+                <h2>📱 Device Driver Layer</h2>
+                <div class="components">
+                    <div class="component">
+                        <strong>Platform Drivers</strong><br>
+                        Device-specific interrupt handlers
+                    </div>
+                    <div class="component">
+                        <strong>Subsystem Drivers</strong><br>
+                        Network, Block, Character devices
+                    </div>
+                    <div class="component">
+                        <strong>User Applications</strong><br>
+                        Signal delivery & async I/O
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Tabbed Content -->
+        <div class="tabs">
+            <button class="tab active" onclick="showTab('api')">GIC API Functions</button>
+            <button class="tab" onclick="showTab('flow')">Interrupt Flow</button>
+            <button class="tab" onclick="showTab('example')">Driver Example</button>
+        </div>
+        
+        <div id="api" class="tab-content active">
+            <h3>🔌 Key GIC API Functions</h3>
+            
+            <div class="api-section">
+                <h3>Driver Registration APIs</h3>
+                <div class="api-function">
+                    <strong>int request_irq(unsigned int irq, irq_handler_t handler, unsigned long flags, const char *name, void *dev)</strong><br>
+                    <em>Register an interrupt handler with the kernel</em>
+                </div>
+                <div class="api-function">
+                    <strong>void free_irq(unsigned int irq, void *dev_id)</strong><br>
+                    <em>Unregister an interrupt handler</em>
+                </div>
+                <div class="api-function">
+                    <strong>int devm_request_irq(struct device *dev, unsigned int irq, irq_handler_t handler, unsigned long irqflags, const char *devname, void *dev_id)</strong><br>
+                    <em>Device-managed IRQ registration (auto cleanup)</em>
+                </div>
+            </div>
+            
+            <div class="api-section">
+                <h3>IRQ Control APIs</h3>
+                <div class="api-function">
+                    <strong>void disable_irq(unsigned int irq)</strong><br>
+                    <em>Disable interrupt and wait for pending handlers</em>
+                </div>
+                <div class="api-function">
+                    <strong>void disable_irq_nosync(unsigned int irq)</strong><br>
+                    <em>Disable interrupt without waiting</em>
+                </div>
+                <div class="api-function">
+                    <strong>void enable_irq(unsigned int irq)</strong><br>
+                    <em>Enable previously disabled interrupt</em>
+                </div>
+                <div class="api-function">
+                    <strong>int irq_set_affinity(unsigned int irq, const struct cpumask *cpumask)</strong><br>
+                    <em>Set CPU affinity for interrupt</em>
+                </div>
+            </div>
+            
+            <div class="api-section">
+                <h3>Platform Device APIs</h3>
+                <div class="api-function">
+                    <strong>int platform_get_irq(struct platform_device *dev, unsigned int num)</strong><br>
+                    <em>Get IRQ number from platform device resources</em>
+                </div>
+                <div class="api-function">
+                    <strong>int of_irq_get(struct device_node *dev, int index)</strong><br>
+                    <em>Get IRQ from device tree node</em>
+                </div>
+            </div>
+        </div>
+        
+        <div id="flow" class="tab-content">
+            <div class="sequence-flow">
+                <h3>🔄 Complete Interrupt Processing Flow</h3>
+                
+                <div class="sequence-step">
+                    <div class="step-number">1</div>
+                    <div>
+                        <strong>Hardware Interrupt Occurs</strong><br>
+                        Peripheral device asserts interrupt signal to GIC
+                    </div>
+                </div>
+                
+                <div class="sequence-step">
+                    <div class="step-number">2</div>
+                    <div>
+                        <strong>GIC Processing</strong><br>
+                        GIC Distributor identifies highest priority interrupt and forwards to appropriate CPU interface
+                    </div>
+                </div>
+                
+                <div class="sequence-step">
+                    <div class="step-number">3</div>
+                    <div>
+                        <strong>CPU Exception</strong><br>
+                        CPU receives IRQ/FIQ exception and jumps to vector table
+                    </div>
+                </div>
+                
+                <div class="sequence-step">
+                    <div class="step-number">4</div>
+                    <div>
+                        <strong>Low-level Handler</strong><br>
+                        Assembly code saves context and calls gic_handle_irq()
+                    </div>
+                </div>
+                
+                <div class="sequence-step">
+                    <div class="step-number">5</div>
+                    <div>
+                        <strong>IRQ Acknowledgment</strong><br>
+                        Read GIC IAR register to get interrupt ID and acknowledge
+                    </div>
+                </div>
+                
+                <div class="sequence-step">
+                    <div class="step-number">6</div>
+                    <div>
+                        <strong>Generic IRQ Layer</strong><br>
+                        Convert hardware IRQ to Linux IRQ using IRQ domain
+                    </div>
+                </div>
+                
+                <div class="sequence-step">
+                    <div class="step-number">7</div>
+                    <div>
+                        <strong>Flow Handler</strong><br>
+                        Call appropriate flow handler (handle_level_irq, handle_edge_irq)
+                    </div>
+                </div>
+                
+                <div class="sequence-step">
+                    <div class="step-number">8</div>
+                    <div>
+                        <strong>Device Handler</strong><br>
+                        Execute registered device driver interrupt handler
+                    </div>
+                </div>
+                
+                <div class="sequence-step">
+                    <div class="step-number">9</div>
+                    <div>
+                        <strong>EOI (End of Interrupt)</strong><br>
+                        Write to GIC EOIR register to signal completion
+                    </div>
+                </div>
+                
+                <div class="sequence-step">
+                    <div class="step-number">10</div>
+                    <div>
+                        <strong>Context Restoration</strong><br>
+                        Restore CPU context and return from interrupt
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div id="example" class="tab-content">
+            <h3>💻 Complete Driver Example</h3>
+            <p>Here's a comprehensive example showing how a device driver interfaces with the GIC through the Linux interrupt subsystem:</p>
+            
+            <div class="code-block">
+<span class="highlight">#include</span> &lt;linux/module.h&gt;
+<span class="highlight">#include</span> &lt;linux/platform_device.h&gt;
+<span class="highlight">#include</span> &lt;linux/interrupt.h&gt;
+<span class="highlight">#include</span> &lt;linux/of.h&gt;
+<span class="highlight">#include</span> &lt;linux/io.h&gt;
+
+<span class="highlight">struct</span> my_device {
+    <span class="highlight">void</span> __iomem *base;
+    <span class="highlight">int</span> irq;
+    <span class="highlight">struct</span> device *dev;
+};
+
+<span class="highlight">static</span> irqreturn_t my_device_irq_handler(<span class="highlight">int</span> irq, <span class="highlight">void</span> *data)
+{
+    <span class="highlight">struct</span> my_device *mydev = (<span class="highlight">struct</span> my_device *)data;
+    <span class="highlight">u32</span> status;
+    
+    // Read interrupt status from device registers
+    status = readl(mydev->base + STATUS_REG);
+    
+    <span class="highlight">if</span> (!(status & IRQ_PENDING))
+        <span class="highlight">return</span> IRQ_NONE; // Not our interrupt
+    
+    // Handle the interrupt
+    dev_info(mydev->dev, "Interrupt handled, status: 0x%x\n", status);
+    
+    // Clear interrupt status
+    writel(status, mydev->base + STATUS_REG);
+    
+    <span class="highlight">return</span> IRQ_HANDLED;
+}
+
+<span class="highlight">static</span> <span class="highlight">int</span> my_device_probe(<span class="highlight">struct</span> platform_device *pdev)
+{
+    <span class="highlight">struct</span> my_device *mydev;
+    <span class="highlight">struct</span> resource *res;
+    <span class="highlight">int</span> ret;
+    
+    mydev = devm_kzalloc(&pdev->dev, <span class="highlight">sizeof</span>(*mydev), GFP_KERNEL);
+    <span class="highlight">if</span> (!mydev)
+        <span class="highlight">return</span> -ENOMEM;
+    
+    mydev->dev = &pdev->dev;
+    
+    // Get memory resource
+    res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+    mydev->base = devm_ioremap_resource(&pdev->dev, res);
+    <span class="highlight">if</span> (IS_ERR(mydev->base))
+        <span class="highlight">return</span> PTR_ERR(mydev->base);
+    
+    // Get IRQ number from platform device (DT or ACPI)
+    mydev->irq = platform_get_irq(pdev, 0);
+    <span class="highlight">if</span> (mydev->irq < 0) {
+        dev_err(&pdev->dev, "Failed to get IRQ\n");
+        <span class="highlight">return</span> mydev->irq;
+    }
+    
+    // Request interrupt line
+    ret = devm_request_irq(&pdev->dev, mydev->irq, 
+                          my_device_irq_handler,
+                          IRQF_TRIGGER_RISING, 
+                          "my-device", mydev);
+    <span class="highlight">if</span> (ret) {
+        dev_err(&pdev->dev, "Failed to request IRQ %d: %d\n", 
+                mydev->irq, ret);
+        <span class="highlight">return</span> ret;
+    }
+    
+    platform_set_drvdata(pdev, mydev);
+    
+    dev_info(&pdev->dev, "Driver probed successfully, IRQ: %d\n", 
+             mydev->irq);
+    
+    <span class="highlight">return</span> 0;
+}
+
+<span class="highlight">static</span> <span class="highlight">const</span> <span class="highlight">struct</span> of_device_id my_device_of_match[] = {
+    { .compatible = "vendor,my-device" },
+    {},
+};
+MODULE_DEVICE_TABLE(of, my_device_of_match);
+
+<span class="highlight">static</span> <span class="highlight">struct</span> platform_driver my_device_driver = {
+    .probe = my_device_probe,
+    .driver = {
+        .name = "my-device",
+        .of_match_table = my_device_of_match,
+    },
+};
+
+module_platform_driver(my_device_driver);
+MODULE_LICENSE("GPL");
+            </div>
+            
+            <div class="api-section">
+                <h3>Device Tree Binding</h3>
+                <div class="code-block">
+my-device@12345000 {
+    compatible = "vendor,my-device";
+    reg = &lt;0x12345000 0x1000&gt;;
+    interrupts = &lt;GIC_SPI 45 IRQ_TYPE_LEVEL_HIGH&gt;;
+    interrupt-parent = &lt;&gic&gt;;
+};
+                </div>
+            </div>
+        </div>
+        
+        <div class="api-section">
+            <h3>🎯 Key Concepts Summary</h3>
+            <p><strong>IRQ Domain:</strong> Translates hardware interrupt numbers to Linux virtual IRQ numbers</p>
+            <p><strong>IRQ Chip:</strong> Provides hardware-specific interrupt controller operations</p>
+            <p><strong>Flow Handlers:</strong> Generic interrupt processing based on trigger type (level/edge)</p>
+            <p><strong>Threaded IRQs:</strong> Handle heavy processing in kernel threads instead of hard IRQ context</p>
+            <p><strong>CPU Affinity:</strong> Control which CPU cores handle specific interrupts for performance optimization</p>
+        </div>
+    </div>
+    
+    <script>
+        function showTab(tabName) {
+            // Hide all tab contents
+            const contents = document.querySelectorAll('.tab-content');
+            contents.forEach(content => content.classList.remove('active'));
+            
+            // Remove active class from all tabs
+            const tabs = document.querySelectorAll('.tab');
+            tabs.forEach(tab => tab.classList.remove('active'));
+            
+            // Show selected tab content and mark tab as active
+            document.getElementById(tabName).classList.add('active');
+            event.target.classList.add('active');
+        }
+    </script>
+</body>
+</html>
