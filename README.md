@@ -297,26 +297,6 @@ ret = request_threaded_irq(irq,
 - [Linux Kernel IRQ Subsystem Documentation](https://www.kernel.org/doc/html/latest/core-api/genericirq.html)
 - [Device Tree Interrupt Mapping](https://www.kernel.org/doc/Documentation/devicetree/bindings/interrupt-controller/interrupts.txt)
 
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙋‍♂️ Support
-
-If you have questions or need help:
-
-- 📧 **Email**: your-email@domain.com
-- 🐛 **Issues**: [GitHub Issues](https://github.com/yourusername/gic-guide/issues)
-- 💬 **Discussions**: [GitHub Discussions](https://github.com/yourusername/gic-guide/discussions)
-
 ---
 
 ⭐ **Star this repository** if you found it helpful!
